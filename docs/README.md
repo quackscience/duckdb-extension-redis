@@ -1,88 +1,137 @@
-# DuckDB Redis Extension
-This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries. The extension uses Boost.Asio for network communication and implements basic Redis protocol commands.
+<img src="https://github.com/user-attachments/assets/46a5c546-7e9b-42c7-87f4-bc8defe674e0" width=250 />
+
+# DuckDB Redis Client Extension
+This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries.
+
+> Experimental: USE AT YOUR OWN RISK!
 
 ## Features
 Currently supported Redis operations:
-- `redis_get(key, host, port, password)`: Retrieves a value from Redis for a given key
-- `redis_set(key, value, host, port, password)`: Sets a value in Redis for a given key
-
-Features:
-- Connection pooling for improved performance
-- Redis authentication support
-- Thread-safe operations
-- Detailed error handling
+- String operations: `GET`, `SET`
+- Hash operations: `HGET`, `HSET`
+- List operations: `LPUSH`, `LRANGE`
+- Batch operations: `MGET`, `SCAN`
 
 ## Installation
 ```sql
-INSTALL 'redis' FROM community;
-LOAD 'redis';
+INSTALL redis FROM community;
+LOAD redis;
 ```
 
-## Usage Examples
-### Connecting with Authentication
+## Usage
+### Setting up Redis Connection
+First, create a secret to store your Redis connection details:
 ```sql
--- Set a value with authentication
-SELECT redis_set('user:1', 'John Doe', 'localhost', '6379', 'mypassword') as result;
+-- Create a Redis connection secret
+CALL redis_create_secret('my_redis', {
+    'host': 'localhost',
+    'port': '6379',
+    'password': 'optional_password'
+});
 
--- Get a value with authentication
-SELECT redis_get('user:1', 'localhost', '6379', 'mypassword') as user_name;
-
--- For non-authenticated Redis servers, pass an empty string as password
-SELECT redis_get('user:1', 'localhost', '6379', '') as user_name;
+-- For cloud Redis services (e.g., Redis Labs)
+CALL redis_create_secret('redis_cloud', {
+    'host': 'redis-xxxxx.cloud.redislabs.com',
+    'port': '16379',
+    'password': 'your_password'
+});
 ```
 
-### Setting Values in Redis
+### String Operations
 ```sql
--- Set a single value
-SELECT redis_set('user:1', 'John Doe', 'localhost', '6379') as result;
+-- Set a value
+SELECT redis_set('user:1', 'John Doe', 'my_redis') as result;
+
+-- Get a value
+SELECT redis_get('user:1', 'my_redis') as user_name;
 
 -- Set multiple values in a query
-INSERT INTO users (id, name, age)
-SELECT redis_set(
+INSERT INTO users (id, name)
+SELECT id, redis_set(
     'user:' || id::VARCHAR,
     name,
-    'localhost',
-    '6379'
+    'my_redis'
 )
 FROM new_users;
 ```
 
-### Getting Values from Redis
+### Hash Operations
 ```sql
--- Get a single value
-SELECT redis_get('user:1', 'localhost', '6379') as user_name;
+-- Set hash fields
+SELECT redis_hset('user:1', 'email', 'john@example.com', 'my_redis');
+SELECT redis_hset('user:1', 'age', '30', 'my_redis');
 
--- Get multiple values
-SELECT 
-    id,
-    redis_get('user:' || id::VARCHAR, 'localhost', '6379') as user_data
-FROM user_ids;
+-- Get hash field
+SELECT redis_hget('user:1', 'email', 'my_redis') as email;
+
+-- Store user profile as hash
+WITH profile(id, field, value) AS (
+    VALUES 
+        (1, 'name', 'John Doe'),
+        (1, 'email', 'john@example.com'),
+        (1, 'age', '30')
+)
+SELECT redis_hset(
+    'user:' || id::VARCHAR,
+    field,
+    value,
+    'my_redis'
+)
+FROM profile;
+```
+
+### List Operations
+```sql
+-- Push items to list
+SELECT redis_lpush('mylist', 'first_item', 'my_redis');
+SELECT redis_lpush('mylist', 'second_item', 'my_redis');
+
+-- Get range from list (returns comma-separated values)
+-- Get all items (0 to -1 means start to end)
+SELECT redis_lrange('mylist', 0, -1, 'my_redis') as items;
+
+-- Get first 5 items
+SELECT redis_lrange('mylist', 0, 4, 'my_redis') as items;
+
+-- Push multiple items
+WITH items(value) AS (
+    VALUES ('item1'), ('item2'), ('item3')
+)
+SELECT redis_lpush('mylist', value, 'my_redis')
+FROM items;
 ```
 
 ### Batch Operations
 ```sql
 -- Get multiple keys at once
-SELECT redis_mget('key1,key2,key3', 'localhost', '6379', '') as values;
+SELECT redis_mget('key1,key2,key3', 'my_redis') as values;
 
 -- Scan keys matching a pattern
-SELECT redis_scan('0', 'user:*', 10, 'localhost', '6379', '') as result;
+SELECT redis_scan('0', 'user:*', 10, 'my_redis') as result;
 -- Returns: "cursor:key1,key2,key3" where cursor is the next position for scanning
 -- Use the returned cursor for the next scan until cursor is 0
 
 -- Scan all keys matching a pattern
 WITH RECURSIVE scan(cursor, keys) AS (
     -- Initial scan
-    SELECT split_part(redis_scan('0', 'user:*', 10, 'localhost', '6379', ''), ':', 1),
-           split_part(redis_scan('0', 'user:*', 10, 'localhost', '6379', ''), ':', 2)
+    SELECT split_part(redis_scan('0', 'user:*', 10, 'my_redis'), ':', 1),
+           split_part(redis_scan('0', 'user:*', 10, 'my_redis'), ':', 2)
     UNION ALL
     -- Continue scanning until cursor is 0
-    SELECT split_part(redis_scan(cursor, 'user:*', 10, 'localhost', '6379', ''), ':', 1),
-           split_part(redis_scan(cursor, 'user:*', 10, 'localhost', '6379', ''), ':', 2)
+    SELECT split_part(redis_scan(cursor, 'user:*', 10, 'my_redis'), ':', 1),
+           split_part(redis_scan(cursor, 'user:*', 10, 'my_redis'), ':', 2)
     FROM scan
     WHERE cursor != '0'
 )
 SELECT keys FROM scan;
 ```
+
+## Error Handling
+The extension functions will throw exceptions with descriptive error messages when:
+- Redis secret is not found or invalid
+- Unable to connect to Redis server
+- Network communication errors occur
+- Invalid Redis protocol responses are received
 
 ## Building from Source
 Follow the standard DuckDB extension build process:
@@ -98,18 +147,9 @@ make
 ## Dependencies
 - Boost.Asio (header-only, installed via vcpkg)
 
-## Error Handling
-The extension functions will throw exceptions with descriptive error messages when:
-- Unable to connect to Redis server
-- Network communication errors occur
-- Invalid Redis protocol responses are received
-
 ## Future Enhancements
 Planned features include:
-- Support for Redis authentication
-- Connection pooling for better performance
-- Additional Redis commands (HGET, HSET, LPUSH, etc.)
-- Table functions for scanning Redis keys
+- Additional Redis commands (SADD, SMEMBERS, etc.)
 - Batch operations using Redis pipelines
 - Connection timeout handling
 
