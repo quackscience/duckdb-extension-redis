@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "dependencies": [
     {
-      "name": "boost-asio",
-      "version>=": "1.71.0"
+      "name": "boost",
+      "default-features": false,
+      "features": ["system"]
     }
   ]
 }

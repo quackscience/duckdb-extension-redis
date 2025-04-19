@@ -18,8 +18,13 @@ build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 # Link against Boost
-target_link_libraries(${EXTENSION_NAME} Boost::system)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} Boost::system)
+if(TARGET Boost::system)
+    target_link_libraries(${EXTENSION_NAME} PRIVATE Boost::system)
+    target_link_libraries(${LOADABLE_EXTENSION_NAME} PRIVATE Boost::system)
+else()
+    target_link_libraries(${EXTENSION_NAME} PRIVATE ${Boost_LIBRARIES})
+    target_link_libraries(${LOADABLE_EXTENSION_NAME} PRIVATE ${Boost_LIBRARIES})
+endif()
 
 # Define REDISCPP_HEADER_ONLY to use redis-cpp as header-only
 target_compile_definitions(${EXTENSION_NAME} PRIVATE REDISCPP_HEADER_ONLY)
