@@ -7,12 +7,22 @@ set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
-include_directories(src/include)
+
+# Find Boost headers from vcpkg
+find_package(Boost REQUIRED)
+include_directories(
+    src/include
+    ${Boost_INCLUDE_DIRS}
+)
 
 set(EXTENSION_SOURCES src/redis_extension.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
+
+# Add Boost include directories to targets
+target_include_directories(${EXTENSION_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
+target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
 
 install(
   TARGETS ${EXTENSION_NAME}
