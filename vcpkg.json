@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "dependencies": [
     {
-      "name": "boost-asio"
+      "name": "boost",
+      "features": ["asio"]
     }
   ]
 }
