@@ -19,7 +19,7 @@ jobs:
       duckdb_version: main
       ci_tools_version: main
       extension_name: redis
-      exclude_archs: 'wasm_mmp;wasm_threads;wasm_eh'
+      exclude_archs: 'wasm_mvp;wasm_threads;wasm_eh'
 
 
   duckdb-stable-build:
@@ -29,4 +29,4 @@ jobs:
       duckdb_version: v1.2.1
       ci_tools_version: v1.2.1
       extension_name: redis
-      exclude_archs: 'wasm_mmp;wasm_threads;wasm_eh'
+      exclude_archs: 'wasm_mvp;wasm_threads;wasm_eh'
