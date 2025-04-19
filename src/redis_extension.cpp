@@ -82,10 +82,14 @@ public:
 
     // Key scanning
     static std::string formatScan(const std::string& cursor, const std::string& pattern = "*", int64_t count = 10) {
+        std::string cmd = "*6\r\n$4\r\nSCAN\r\n";
+        cmd += "$" + std::to_string(cursor.length()) + "\r\n" + cursor + "\r\n";
+        cmd += "$5\r\nMATCH\r\n";
+        cmd += "$" + std::to_string(pattern.length()) + "\r\n" + pattern + "\r\n";
+        cmd += "$5\r\nCOUNT\r\n";
         auto count_str = std::to_string(count);
-        return "*6\r\n$4\r\nSCAN\r\n$" + std::to_string(cursor.length()) + "\r\n" + cursor +
-               "\r\n$5\r\nMATCH\r\n$" + std::to_string(pattern.length()) + "\r\n" + pattern +
-               "\r\n$5\r\nCOUNT\r\n$" + std::to_string(count_str.length()) + "\r\n" + count_str + "\r\n";
+        cmd += "$" + std::to_string(count_str.length()) + "\r\n" + count_str + "\r\n";
+        return cmd;
     }
 
     static std::vector<std::string> parseArrayResponse(const std::string& response) {
@@ -110,6 +114,14 @@ public:
             }
         }
         return result;
+    }
+
+    static std::string formatMGet(const std::vector<std::string>& keys) {
+        std::string cmd = "*" + std::to_string(keys.size() + 1) + "\r\n$4\r\nMGET\r\n";
+        for (const auto& key : keys) {
+            cmd += "$" + std::to_string(key.length()) + "\r\n" + key + "\r\n";
+        }
+        return cmd;
     }
 };
 
@@ -348,6 +360,92 @@ static void RedisLRangeFunction(DataChunk &args, ExpressionState &state, Vector 
         });
 }
 
+static void RedisMGetFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &keys_list = args.data[0];
+    auto &host_vector = args.data[1];
+    auto &port_vector = args.data[2];
+    auto &password_vector = args.data[3];
+
+    UnaryExecutor::Execute<string_t, string_t>(
+        keys_list, result, args.size(),
+        [&](string_t keys_str) {
+            try {
+                // Split comma-separated keys
+                std::vector<std::string> keys;
+                std::string key_list = keys_str.GetString();
+                size_t pos = 0;
+                while ((pos = key_list.find(',')) != std::string::npos) {
+                    keys.push_back(key_list.substr(0, pos));
+                    key_list.erase(0, pos + 1);
+                }
+                if (!key_list.empty()) {
+                    keys.push_back(key_list);
+                }
+
+                auto conn = ConnectionPool::getInstance().getConnection(
+                    host_vector.GetValue(0).ToString(),
+                    port_vector.GetValue(0).ToString(),
+                    password_vector.GetValue(0).ToString()
+                );
+                auto response = conn->execute(RedisProtocol::formatMGet(keys));
+                auto values = RedisProtocol::parseArrayResponse(response);
+                
+                // Join results with comma
+                std::string joined;
+                for (size_t i = 0; i < values.size(); i++) {
+                    if (i > 0) joined += ",";
+                    joined += values[i];
+                }
+                return StringVector::AddString(result, joined);
+            } catch (std::exception &e) {
+                throw InvalidInputException("Redis MGET error: %s", e.what());
+            }
+        });
+}
+
+static void RedisScanFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &cursor_vector = args.data[0];
+    auto &pattern_vector = args.data[1];
+    auto &count_vector = args.data[2];
+    auto &host_vector = args.data[3];
+    auto &port_vector = args.data[4];
+    auto &password_vector = args.data[5];
+
+    BinaryExecutor::Execute<string_t, string_t, string_t>(
+        cursor_vector, pattern_vector, result, args.size(),
+        [&](string_t cursor, string_t pattern) {
+            try {
+                auto conn = ConnectionPool::getInstance().getConnection(
+                    host_vector.GetValue(0).ToString(),
+                    port_vector.GetValue(0).ToString(),
+                    password_vector.GetValue(0).ToString()
+                );
+                
+                auto count = count_vector.GetValue(0).GetValue<int64_t>();
+                auto response = conn->execute(RedisProtocol::formatScan(
+                    cursor.GetString(), 
+                    pattern.GetString(),
+                    count
+                ));
+                auto scan_result = RedisProtocol::parseArrayResponse(response);
+                
+                if (scan_result.size() >= 2) {
+                    // First element is the new cursor, second element is array of keys
+                    std::string result_str = scan_result[0] + ":";
+                    auto keys = RedisProtocol::parseArrayResponse(scan_result[1]);
+                    for (size_t i = 0; i < keys.size(); i++) {
+                        if (i > 0) result_str += ",";
+                        result_str += keys[i];
+                    }
+                    return StringVector::AddString(result, result_str);
+                }
+                return StringVector::AddString(result, "0:");
+            } catch (std::exception &e) {
+                throw InvalidInputException("Redis SCAN error: %s", e.what());
+            }
+        });
+}
+
 static void LoadInternal(DatabaseInstance &instance) {
     // Register Redis GET function with optional password
     auto redis_get_func = ScalarFunction(
@@ -427,6 +525,32 @@ static void LoadInternal(DatabaseInstance &instance) {
         RedisLRangeFunction
     );
     ExtensionUtil::RegisterFunction(instance, redis_lrange_func);
+
+    // Register MGET
+    auto redis_mget_func = ScalarFunction(
+        "redis_mget",
+        {LogicalType::VARCHAR,    // comma-separated keys
+         LogicalType::VARCHAR,    // host
+         LogicalType::VARCHAR,    // port
+         LogicalType::VARCHAR},   // password
+        LogicalType::VARCHAR,
+        RedisMGetFunction
+    );
+    ExtensionUtil::RegisterFunction(instance, redis_mget_func);
+
+    // Register SCAN
+    auto redis_scan_func = ScalarFunction(
+        "redis_scan",
+        {LogicalType::VARCHAR,    // cursor
+         LogicalType::VARCHAR,    // pattern
+         LogicalType::BIGINT,     // count
+         LogicalType::VARCHAR,    // host
+         LogicalType::VARCHAR,    // port
+         LogicalType::VARCHAR},   // password
+        LogicalType::VARCHAR,
+        RedisScanFunction
+    );
+    ExtensionUtil::RegisterFunction(instance, redis_scan_func);
 }
 
 void RedisExtension::Load(DuckDB &db) {

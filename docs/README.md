@@ -59,6 +59,31 @@ SELECT
 FROM user_ids;
 ```
 
+### Batch Operations
+```sql
+-- Get multiple keys at once
+SELECT redis_mget('key1,key2,key3', 'localhost', '6379', '') as values;
+
+-- Scan keys matching a pattern
+SELECT redis_scan('0', 'user:*', 10, 'localhost', '6379', '') as result;
+-- Returns: "cursor:key1,key2,key3" where cursor is the next position for scanning
+-- Use the returned cursor for the next scan until cursor is 0
+
+-- Scan all keys matching a pattern
+WITH RECURSIVE scan(cursor, keys) AS (
+    -- Initial scan
+    SELECT split_part(redis_scan('0', 'user:*', 10, 'localhost', '6379', ''), ':', 1),
+           split_part(redis_scan('0', 'user:*', 10, 'localhost', '6379', ''), ':', 2)
+    UNION ALL
+    -- Continue scanning until cursor is 0
+    SELECT split_part(redis_scan(cursor, 'user:*', 10, 'localhost', '6379', ''), ':', 1),
+           split_part(redis_scan(cursor, 'user:*', 10, 'localhost', '6379', ''), ':', 2)
+    FROM scan
+    WHERE cursor != '0'
+)
+SELECT keys FROM scan;
+```
+
 ## Building from Source
 Follow the standard DuckDB extension build process:
 
