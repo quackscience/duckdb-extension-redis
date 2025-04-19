@@ -1,5 +1,10 @@
 {
+  "name": "duckdb-redis",
+  "version": "0.1.0",
   "dependencies": [
-    "openssl"
+    {
+      "name": "boost-asio",
+      "version>=": "1.71.0"
+    }
   ]
 }
