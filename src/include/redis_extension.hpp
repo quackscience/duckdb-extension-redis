@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "redis_secret.hpp"
 
 namespace duckdb {
 

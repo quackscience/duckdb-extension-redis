@@ -39,7 +39,16 @@ public:
             // Bulk string response
             size_t pos = response.find("\r\n");
             if (pos == std::string::npos) return "";
-            return response.substr(pos + 2);
+            
+            // Skip the length prefix and first \r\n
+            pos += 2;
+            std::string value = response.substr(pos);
+            
+            // Remove trailing \r\n if present
+            if (value.size() >= 2 && value.substr(value.size() - 2) == "\r\n") {
+                value = value.substr(0, value.size() - 2);
+            }
+            return value;
         } else if (response[0] == '+') {
             // Simple string response
             return response.substr(1, response.find("\r\n") - 1);
@@ -201,21 +210,56 @@ private:
     std::unordered_map<std::string, std::shared_ptr<RedisConnection>> connections_;
 };
 
+// Add this helper function
+static bool GetRedisSecret(ClientContext &context, const string &secret_name, string &host, string &port, string &password) {
+    auto &secret_manager = SecretManager::Get(context);
+    try {
+        auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
+        auto secret_match = secret_manager.LookupSecret(transaction, "redis", secret_name);
+        if (secret_match.HasMatch()) {
+            auto &secret = secret_match.GetSecret();
+            if (secret.GetType() != "redis") {
+                throw InvalidInputException("Invalid secret type. Expected 'redis', got '%s'", secret.GetType());
+            }
+            const auto *kv_secret = dynamic_cast<const KeyValueSecret*>(&secret);
+            if (!kv_secret) {
+                throw InvalidInputException("Invalid secret format for 'redis' secret");
+            }
+            
+            Value host_val, port_val, password_val;
+            if (!kv_secret->TryGetValue("host", host_val) || 
+                !kv_secret->TryGetValue("port", port_val) ||
+                !kv_secret->TryGetValue("password", password_val)) {
+                return false;
+            }
+            
+            host = host_val.ToString();
+            port = port_val.ToString();
+            password = password_val.ToString();
+            return true;
+        }
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
+
+// Modify the function signatures to accept secret name instead of connection details
 static void RedisGetFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &key_vector = args.data[0];
-    auto &host_vector = args.data[1];
-    auto &port_vector = args.data[2];
-    auto &password_vector = args.data[3];  // New password parameter
+    auto &secret_vector = args.data[1];
 
     UnaryExecutor::Execute<string_t, string_t>(
         key_vector, result, args.size(),
         [&](string_t key) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatGet(key.GetString()));
                 return StringVector::AddString(result, RedisProtocol::parseResponse(response));
             } catch (std::exception &e) {
@@ -227,19 +271,19 @@ static void RedisGetFunction(DataChunk &args, ExpressionState &state, Vector &re
 static void RedisSetFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &key_vector = args.data[0];
     auto &value_vector = args.data[1];
-    auto &host_vector = args.data[2];
-    auto &port_vector = args.data[3];
-    auto &password_vector = args.data[4];  // New password parameter
+    auto &secret_vector = args.data[2];
 
     BinaryExecutor::Execute<string_t, string_t, string_t>(
         key_vector, value_vector, result, args.size(),
         [&](string_t key, string_t value) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatSet(key.GetString(), value.GetString()));
                 return StringVector::AddString(result, RedisProtocol::parseResponse(response));
             } catch (std::exception &e) {
@@ -252,19 +296,19 @@ static void RedisSetFunction(DataChunk &args, ExpressionState &state, Vector &re
 static void RedisHGetFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &key_vector = args.data[0];
     auto &field_vector = args.data[1];
-    auto &host_vector = args.data[2];
-    auto &port_vector = args.data[3];
-    auto &password_vector = args.data[4];
+    auto &secret_vector = args.data[2];
 
     BinaryExecutor::Execute<string_t, string_t, string_t>(
         key_vector, field_vector, result, args.size(),
         [&](string_t key, string_t field) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatHGet(key.GetString(), field.GetString()));
                 return StringVector::AddString(result, RedisProtocol::parseResponse(response));
             } catch (std::exception &e) {
@@ -277,19 +321,19 @@ static void RedisHSetFunction(DataChunk &args, ExpressionState &state, Vector &r
     auto &key_vector = args.data[0];
     auto &field_vector = args.data[1];
     auto &value_vector = args.data[2];
-    auto &host_vector = args.data[3];
-    auto &port_vector = args.data[4];
-    auto &password_vector = args.data[5];
+    auto &secret_vector = args.data[3];
 
     BinaryExecutor::Execute<string_t, string_t, string_t>(
         key_vector, field_vector, result, args.size(),
         [&](string_t key, string_t field) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatHSet(
                     key.GetString(), 
                     field.GetString(),
@@ -306,19 +350,19 @@ static void RedisHSetFunction(DataChunk &args, ExpressionState &state, Vector &r
 static void RedisLPushFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &key_vector = args.data[0];
     auto &value_vector = args.data[1];
-    auto &host_vector = args.data[2];
-    auto &port_vector = args.data[3];
-    auto &password_vector = args.data[4];
+    auto &secret_vector = args.data[2];
 
     BinaryExecutor::Execute<string_t, string_t, string_t>(
         key_vector, value_vector, result, args.size(),
         [&](string_t key, string_t value) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatLPush(key.GetString(), value.GetString()));
                 return StringVector::AddString(result, RedisProtocol::parseResponse(response));
             } catch (std::exception &e) {
@@ -331,19 +375,19 @@ static void RedisLRangeFunction(DataChunk &args, ExpressionState &state, Vector 
     auto &key_vector = args.data[0];
     auto &start_vector = args.data[1];
     auto &stop_vector = args.data[2];
-    auto &host_vector = args.data[3];
-    auto &port_vector = args.data[4];
-    auto &password_vector = args.data[5];
+    auto &secret_vector = args.data[3];
 
     BinaryExecutor::Execute<string_t, int64_t, string_t>(
         key_vector, start_vector, result, args.size(),
         [&](string_t key, int64_t start) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto stop = stop_vector.GetValue(0).GetValue<int64_t>();
                 auto response = conn->execute(RedisProtocol::formatLRange(key.GetString(), start, stop));
                 auto values = RedisProtocol::parseArrayResponse(response);
@@ -362,9 +406,7 @@ static void RedisLRangeFunction(DataChunk &args, ExpressionState &state, Vector 
 
 static void RedisMGetFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &keys_list = args.data[0];
-    auto &host_vector = args.data[1];
-    auto &port_vector = args.data[2];
-    auto &password_vector = args.data[3];
+    auto &secret_vector = args.data[1];
 
     UnaryExecutor::Execute<string_t, string_t>(
         keys_list, result, args.size(),
@@ -382,11 +424,13 @@ static void RedisMGetFunction(DataChunk &args, ExpressionState &state, Vector &r
                     keys.push_back(key_list);
                 }
 
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+                
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatMGet(keys));
                 auto values = RedisProtocol::parseArrayResponse(response);
                 
@@ -407,21 +451,20 @@ static void RedisScanFunction(DataChunk &args, ExpressionState &state, Vector &r
     auto &cursor_vector = args.data[0];
     auto &pattern_vector = args.data[1];
     auto &count_vector = args.data[2];
-    auto &host_vector = args.data[3];
-    auto &port_vector = args.data[4];
-    auto &password_vector = args.data[5];
+    auto &secret_vector = args.data[3];
 
     BinaryExecutor::Execute<string_t, string_t, string_t>(
         cursor_vector, pattern_vector, result, args.size(),
         [&](string_t cursor, string_t pattern) {
             try {
-                auto conn = ConnectionPool::getInstance().getConnection(
-                    host_vector.GetValue(0).ToString(),
-                    port_vector.GetValue(0).ToString(),
-                    password_vector.GetValue(0).ToString()
-                );
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(), 
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
                 
                 auto count = count_vector.GetValue(0).GetValue<int64_t>();
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
                 auto response = conn->execute(RedisProtocol::formatScan(
                     cursor.GetString(), 
                     pattern.GetString(),
@@ -447,26 +490,22 @@ static void RedisScanFunction(DataChunk &args, ExpressionState &state, Vector &r
 }
 
 static void LoadInternal(DatabaseInstance &instance) {
-    // Register Redis GET function with optional password
+    // Register Redis GET function
     auto redis_get_func = ScalarFunction(
         "redis_get",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisGetFunction
     );
     ExtensionUtil::RegisterFunction(instance, redis_get_func);
 
-    // Register Redis SET function with optional password
+    // Register Redis SET function
     auto redis_set_func = ScalarFunction(
         "redis_set",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::VARCHAR,                                // value
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::VARCHAR,    // value
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisSetFunction
     );
@@ -475,11 +514,9 @@ static void LoadInternal(DatabaseInstance &instance) {
     // Register HGET
     auto redis_hget_func = ScalarFunction(
         "redis_hget",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::VARCHAR,                                // field
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::VARCHAR,    // field
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisHGetFunction
     );
@@ -488,12 +525,10 @@ static void LoadInternal(DatabaseInstance &instance) {
     // Register HSET
     auto redis_hset_func = ScalarFunction(
         "redis_hset",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::VARCHAR,                                // field
-         LogicalType::VARCHAR,                                // value
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::VARCHAR,    // field
+         LogicalType::VARCHAR,    // value
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisHSetFunction
     );
@@ -502,11 +537,9 @@ static void LoadInternal(DatabaseInstance &instance) {
     // Register LPUSH
     auto redis_lpush_func = ScalarFunction(
         "redis_lpush",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::VARCHAR,                                // value
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::VARCHAR,    // value
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisLPushFunction
     );
@@ -515,12 +548,10 @@ static void LoadInternal(DatabaseInstance &instance) {
     // Register LRANGE
     auto redis_lrange_func = ScalarFunction(
         "redis_lrange",
-        {LogicalType::VARCHAR,                                // key
-         LogicalType::BIGINT,                                 // start
-         LogicalType::BIGINT,                                 // stop
-         LogicalType::VARCHAR,                                // host
-         LogicalType::VARCHAR,                                // port
-         LogicalType::VARCHAR},                               // password
+        {LogicalType::VARCHAR,    // key
+         LogicalType::BIGINT,     // start
+         LogicalType::BIGINT,     // stop
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisLRangeFunction
     );
@@ -530,9 +561,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     auto redis_mget_func = ScalarFunction(
         "redis_mget",
         {LogicalType::VARCHAR,    // comma-separated keys
-         LogicalType::VARCHAR,    // host
-         LogicalType::VARCHAR,    // port
-         LogicalType::VARCHAR},   // password
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisMGetFunction
     );
@@ -544,9 +573,7 @@ static void LoadInternal(DatabaseInstance &instance) {
         {LogicalType::VARCHAR,    // cursor
          LogicalType::VARCHAR,    // pattern
          LogicalType::BIGINT,     // count
-         LogicalType::VARCHAR,    // host
-         LogicalType::VARCHAR,    // port
-         LogicalType::VARCHAR},   // password
+         LogicalType::VARCHAR},   // secret_name
         LogicalType::VARCHAR,
         RedisScanFunction
     );
