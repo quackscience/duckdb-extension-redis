@@ -24,27 +24,31 @@ First, create a secret to store your Redis connection details:
 
 ```sql
 -- Create a Redis connection secret
-CALL redis_create_secret('my_redis', {
-    'host': 'localhost',
-    'port': '6379',
-    'password': 'optional_password'
-});
+CREATE SECRET IF NOT EXISTS redis (
+        TYPE redis,
+        PROVIDER config,
+        host 'localhost',
+        port '6379',
+        password 'optional_password'
+    );
 
--- For cloud Redis services (e.g., Redis Labs)
-CALL redis_create_secret('redis_cloud', {
-    'host': 'redis-xxxxx.cloud.redislabs.com',
-    'port': '16379',
-    'password': 'your_password'
-});
+-- Create a Redis cloud connection secret
+CREATE SECRET IF NOT EXISTS redis (
+        TYPE redis,
+        PROVIDER config,
+        host 'redis-1234.ec2.redns.redis-cloud.com',
+        port '16959',
+        password 'xxxxxx'
+    );
 ```
 
 ### String Operations
 ```sql
 -- Set a value
-SELECT redis_set('user:1', 'John Doe', 'my_redis') as result;
+SELECT redis_set('user:1', 'John Doe', 'redis') as result;
 
 -- Get a value
-SELECT redis_get('user:1', 'my_redis') as user_name;
+SELECT redis_get('user:1', 'redis') as user_name;
 
 -- Set multiple values in a query
 INSERT INTO users (id, name)
@@ -59,11 +63,11 @@ FROM new_users;
 ### Hash Operations
 ```sql
 -- Set hash fields
-SELECT redis_hset('user:1', 'email', 'john@example.com', 'my_redis');
-SELECT redis_hset('user:1', 'age', '30', 'my_redis');
+SELECT redis_hset('user:1', 'email', 'john@example.com', 'redis');
+SELECT redis_hset('user:1', 'age', '30', 'redis');
 
 -- Get hash field
-SELECT redis_hget('user:1', 'email', 'my_redis') as email;
+SELECT redis_hget('user:1', 'email', 'redis') as email;
 
 -- Store user profile as hash
 WITH profile(id, field, value) AS (
@@ -76,7 +80,7 @@ SELECT redis_hset(
     'user:' || id::VARCHAR,
     field,
     value,
-    'my_redis'
+    'redis'
 )
 FROM profile;
 ```
@@ -84,21 +88,21 @@ FROM profile;
 ### List Operations
 ```sql
 -- Push items to list
-SELECT redis_lpush('mylist', 'first_item', 'my_redis');
-SELECT redis_lpush('mylist', 'second_item', 'my_redis');
+SELECT redis_lpush('mylist', 'first_item', 'redis');
+SELECT redis_lpush('mylist', 'second_item', 'redis');
 
 -- Get range from list (returns comma-separated values)
 -- Get all items (0 to -1 means start to end)
-SELECT redis_lrange('mylist', 0, -1, 'my_redis') as items;
+SELECT redis_lrange('mylist', 0, -1, 'redis') as items;
 
 -- Get first 5 items
-SELECT redis_lrange('mylist', 0, 4, 'my_redis') as items;
+SELECT redis_lrange('mylist', 0, 4, 'redis') as items;
 
 -- Push multiple items
 WITH items(value) AS (
     VALUES ('item1'), ('item2'), ('item3')
 )
-SELECT redis_lpush('mylist', value, 'my_redis')
+SELECT redis_lpush('mylist', value, 'redis')
 FROM items;
 ```
 
