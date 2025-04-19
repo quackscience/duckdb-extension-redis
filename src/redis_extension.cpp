@@ -490,7 +490,10 @@ static void RedisScanFunction(DataChunk &args, ExpressionState &state, Vector &r
 }
 
 static void LoadInternal(DatabaseInstance &instance) {
-    // Register Redis GET function
+    // Register the secret functions first!
+    CreateRedisSecretFunctions::Register(instance);
+
+    // Then register Redis functions
     auto redis_get_func = ScalarFunction(
         "redis_get",
         {LogicalType::VARCHAR,    // key
