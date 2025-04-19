@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.5)
 set(TARGET_NAME redis)
 
 # DuckDB's extension distribution supports vcpkg
-find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED)
+find_package(boost-asio CONFIG REQUIRED)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
@@ -18,13 +19,8 @@ build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 # Link against Boost
-if(TARGET Boost::system)
-    target_link_libraries(${EXTENSION_NAME} PRIVATE Boost::system)
-    target_link_libraries(${LOADABLE_EXTENSION_NAME} PRIVATE Boost::system)
-else()
-    target_link_libraries(${EXTENSION_NAME} PRIVATE ${Boost_LIBRARIES})
-    target_link_libraries(${LOADABLE_EXTENSION_NAME} PRIVATE ${Boost_LIBRARIES})
-endif()
+target_link_libraries(${EXTENSION_NAME} PRIVATE Boost::boost boost::asio)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} PRIVATE Boost::boost boost::asio)
 
 # Define REDISCPP_HEADER_ONLY to use redis-cpp as header-only
 target_compile_definitions(${EXTENSION_NAME} PRIVATE REDISCPP_HEADER_ONLY)
