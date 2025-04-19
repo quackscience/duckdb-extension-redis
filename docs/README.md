@@ -3,8 +3,14 @@ This extension provides Redis client functionality for DuckDB, allowing you to i
 
 ## Features
 Currently supported Redis operations:
-- `redis_get(key, host, port)`: Retrieves a value from Redis for a given key
-- `redis_set(key, value, host, port)`: Sets a value in Redis for a given key
+- `redis_get(key, host, port, password)`: Retrieves a value from Redis for a given key
+- `redis_set(key, value, host, port, password)`: Sets a value in Redis for a given key
+
+Features:
+- Connection pooling for improved performance
+- Redis authentication support
+- Thread-safe operations
+- Detailed error handling
 
 ## Installation
 ```sql
@@ -13,6 +19,18 @@ LOAD 'redis';
 ```
 
 ## Usage Examples
+### Connecting with Authentication
+```sql
+-- Set a value with authentication
+SELECT redis_set('user:1', 'John Doe', 'localhost', '6379', 'mypassword') as result;
+
+-- Get a value with authentication
+SELECT redis_get('user:1', 'localhost', '6379', 'mypassword') as user_name;
+
+-- For non-authenticated Redis servers, pass an empty string as password
+SELECT redis_get('user:1', 'localhost', '6379', '') as user_name;
+```
+
 ### Setting Values in Redis
 ```sql
 -- Set a single value
