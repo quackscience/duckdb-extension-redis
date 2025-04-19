@@ -39,7 +39,16 @@ public:
             // Bulk string response
             size_t pos = response.find("\r\n");
             if (pos == std::string::npos) return "";
-            return response.substr(pos + 2);
+            
+            // Skip the length prefix and first \r\n
+            pos += 2;
+            std::string value = response.substr(pos);
+            
+            // Remove trailing \r\n if present
+            if (value.size() >= 2 && value.substr(value.size() - 2) == "\r\n") {
+                value = value.substr(0, value.size() - 2);
+            }
+            return value;
         } else if (response[0] == '+') {
             // Simple string response
             return response.substr(1, response.find("\r\n") - 1);
