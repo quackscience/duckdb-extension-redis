@@ -1,5 +1,9 @@
-# DuckDB Redis Extension
-This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries. The extension uses Boost.Asio for network communication and implements basic Redis protocol commands.
+<img src="https://github.com/user-attachments/assets/46a5c546-7e9b-42c7-87f4-bc8defe674e0" width=250 />
+
+# DuckDB Redis Client Extension
+This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries.
+
+> Experimental: USE AT YOUR OWN RISK!
 
 ## Features
 Currently supported Redis operations:
@@ -8,8 +12,8 @@ Currently supported Redis operations:
 
 ## Installation
 ```sql
-INSTALL 'redis' FROM community;
-LOAD 'redis';
+INSTALL redis FROM community;
+LOAD redis;
 ```
 
 ## Usage Examples
