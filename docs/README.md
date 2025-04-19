@@ -106,6 +106,32 @@ SELECT redis_lpush('mylist', value, 'redis')
 FROM items;
 ```
 
+### Batch Operations
+```sql
+-- Get multiple keys at once
+SELECT redis_mget('key1,key2,key3', 'redis') as values;
+-- Returns comma-separated values for all keys
+
+-- Scan keys matching a pattern
+SELECT redis_scan('0', 'user:*', 10, 'redis') as result;
+-- Returns: "cursor:key1,key2,key3" where cursor is the next position for scanning
+-- Use the returned cursor for the next scan until cursor is 0
+
+-- Scan all keys matching a pattern
+WITH RECURSIVE scan(cursor, keys) AS (
+    -- Initial scan
+    SELECT split_part(redis_scan('0', 'user:*', 10, 'redis'), ':', 1),
+           split_part(redis_scan('0', 'user:*', 10, 'redis'), ':', 2)
+    UNION ALL
+    -- Continue scanning until cursor is 0
+    SELECT split_part(redis_scan(cursor, 'user:*', 10, 'redis'), ':', 1),
+           split_part(redis_scan(cursor, 'user:*', 10, 'redis'), ':', 2)
+    FROM scan
+    WHERE cursor != '0'
+)
+SELECT keys FROM scan;
+```
+
 ## Error Handling
 The extension functions will throw exceptions with descriptive error messages when:
 - Redis secret is not found or invalid
