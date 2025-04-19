@@ -1,3 +1,75 @@
+# DuckDB Redis Extension
+This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries. The extension uses Boost.Asio for network communication and implements basic Redis protocol commands.
+
+## Features
+Currently supported Redis operations:
+- `redis_get(key, host, port)`: Retrieves a value from Redis for a given key
+- `redis_set(key, value, host, port)`: Sets a value in Redis for a given key
+
+## Installation
+```sql
+INSTALL 'redis' FROM community;
+LOAD 'redis';
+```
+
+## Usage Examples
+### Setting Values in Redis
+```sql
+-- Set a single value
+SELECT redis_set('user:1', 'John Doe', 'localhost', '6379') as result;
+
+-- Set multiple values in a query
+INSERT INTO users (id, name, age)
+SELECT redis_set(
+    'user:' || id::VARCHAR,
+    name,
+    'localhost',
+    '6379'
+)
+FROM new_users;
+```
+
+### Getting Values from Redis
+```sql
+-- Get a single value
+SELECT redis_get('user:1', 'localhost', '6379') as user_name;
+
+-- Get multiple values
+SELECT 
+    id,
+    redis_get('user:' || id::VARCHAR, 'localhost', '6379') as user_data
+FROM user_ids;
+```
+
+## Building from Source
+Follow the standard DuckDB extension build process:
+
+```sh
+# Install vcpkg dependencies
+./vcpkg/vcpkg install boost-asio
+
+# Build the extension
+make
+```
+
+## Dependencies
+- Boost.Asio (header-only, installed via vcpkg)
+
+## Error Handling
+The extension functions will throw exceptions with descriptive error messages when:
+- Unable to connect to Redis server
+- Network communication errors occur
+- Invalid Redis protocol responses are received
+
+## Future Enhancements
+Planned features include:
+- Support for Redis authentication
+- Connection pooling for better performance
+- Additional Redis commands (HGET, HSET, LPUSH, etc.)
+- Table functions for scanning Redis keys
+- Batch operations using Redis pipelines
+- Connection timeout handling
+
 # DuckDB Extension Template
 This repository contains a template for creating a DuckDB extension. The main goal of this template is to allow users to easily develop, test and distribute their own DuckDB extension. The main branch of the template is always based on the latest stable DuckDB allowing you to try out your extension right away.
 
