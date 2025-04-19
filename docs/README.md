@@ -10,6 +10,7 @@ Currently supported Redis operations:
 - String operations: `GET`, `SET`
 - Hash operations: `HGET`, `HSET`
 - List operations: `LPUSH`, `LRANGE`
+- Batch operations: `MGET`, `SCAN`
 
 
 ## Installation
