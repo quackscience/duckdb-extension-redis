@@ -11,6 +11,7 @@ Currently supported Redis operations:
 - Hash operations: `HGET`, `HSET`
 - List operations: `LPUSH`, `LRANGE`
 
+
 ## Installation
 ```sql
 INSTALL redis FROM community;
@@ -20,6 +21,7 @@ LOAD redis;
 ## Usage
 ### Setting up Redis Connection
 First, create a secret to store your Redis connection details:
+
 ```sql
 -- Create a Redis connection secret
 CALL redis_create_secret('my_redis', {
