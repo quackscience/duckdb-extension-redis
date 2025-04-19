@@ -86,8 +86,8 @@ static void RedisGetFunction(DataChunk &args, ExpressionState &state, Vector &re
         key_vector, result, args.size(),
         [&](string_t key) {
             try {
-                RedisClient client(host_vector.GetValue(0).GetString(),
-                                 port_vector.GetValue(0).GetString());
+                RedisClient client(host_vector.GetValue(0).ToString(),
+                                 port_vector.GetValue(0).ToString());
                 auto response = client.get(key.GetString());
                 return StringVector::AddString(result, response);
             } catch (std::exception &e) {
@@ -106,8 +106,8 @@ static void RedisSetFunction(DataChunk &args, ExpressionState &state, Vector &re
         key_vector, value_vector, result, args.size(),
         [&](string_t key, string_t value) {
             try {
-                RedisClient client(host_vector.GetValue(0).GetString(),
-                                 port_vector.GetValue(0).GetString());
+                RedisClient client(host_vector.GetValue(0).ToString(),
+                                 port_vector.GetValue(0).ToString());
                 auto response = client.set(key.GetString(), value.GetString());
                 return StringVector::AddString(result, response);
             } catch (std::exception &e) {
