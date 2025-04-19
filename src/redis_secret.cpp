@@ -24,7 +24,7 @@ static void RedactCommonKeys(KeyValueSecret &result) {
     result.redact_keys.insert("password");
 }
 
-static unique_ptr<KeyValueSecret> CreateRedisSecretFromConfig(ClientContext &context, CreateSecretInput &input) {
+static unique_ptr<BaseSecret> CreateRedisSecretFromConfig(ClientContext &context, CreateSecretInput &input) {
     auto scope = input.scope;
     auto result = make_uniq<KeyValueSecret>(scope, input.type, input.provider, input.name);
 
@@ -39,13 +39,19 @@ static unique_ptr<KeyValueSecret> CreateRedisSecretFromConfig(ClientContext &con
     return std::move(result);
 }
 
+static unique_ptr<BaseSecret> RedisSecretDeserialize(Deserializer &deserializer, BaseSecret base_secret) {
+    auto result = KeyValueSecret::Deserialize<KeyValueSecret>(deserializer, std::move(base_secret));
+    RedactCommonKeys(*result);
+    return std::move(result);
+}
+
 void CreateRedisSecretFunctions::Register(DatabaseInstance &instance) {
     string type = "redis";
 
     // Register the new type
     SecretType secret_type;
     secret_type.name = type;
-    secret_type.deserializer = KeyValueSecret::Deserialize;
+    secret_type.deserializer = RedisSecretDeserialize;
     secret_type.default_provider = "config";
     ExtensionUtil::RegisterSecretType(instance, secret_type);
 
