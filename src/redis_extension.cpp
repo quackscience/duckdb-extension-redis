@@ -101,6 +101,18 @@ public:
         return cmd;
     }
 
+    static std::string formatHScan(const std::string& key, const std::string& cursor, const std::string& pattern = "*", int64_t count = 10) {
+        std::string cmd = "*6\r\n$5\r\nHSCAN\r\n";
+        cmd += "$" + std::to_string(key.length()) + "\r\n" + key + "\r\n";
+        cmd += "$" + std::to_string(cursor.length()) + "\r\n" + cursor + "\r\n";
+        cmd += "$5\r\nMATCH\r\n";
+        cmd += "$" + std::to_string(pattern.length()) + "\r\n" + pattern + "\r\n";
+        cmd += "$5\r\nCOUNT\r\n";
+        auto count_str = std::to_string(count);
+        cmd += "$" + std::to_string(count_str.length()) + "\r\n" + count_str + "\r\n";
+        return cmd;
+    }
+
     static std::vector<std::string> parseArrayResponse(const std::string& response) {
         std::vector<std::string> result;
         if (response.empty() || response[0] != '*') return result;
@@ -489,6 +501,53 @@ static void RedisScanFunction(DataChunk &args, ExpressionState &state, Vector &r
         });
 }
 
+static void RedisHScanFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &key_vector = args.data[0];
+    auto &cursor_vector = args.data[1];
+    auto &pattern_vector = args.data[2];
+    auto &count_vector = args.data[3];
+    auto &secret_vector = args.data[4];
+
+    BinaryExecutor::Execute<string_t, string_t, string_t>(
+        key_vector, cursor_vector, result, args.size(),
+        [&](string_t key, string_t cursor) {
+            try {
+                string host, port, password;
+                if (!GetRedisSecret(state.GetContext(), secret_vector.GetValue(0).ToString(),
+                                  host, port, password)) {
+                    throw InvalidInputException("Redis secret not found");
+                }
+
+                auto pattern = pattern_vector.GetValue(0).ToString();
+                auto count = count_vector.GetValue(0).GetValue<int64_t>();
+                auto conn = ConnectionPool::getInstance().getConnection(host, port, password);
+                auto response = conn->execute(RedisProtocol::formatHScan(
+                    key.GetString(),
+                    cursor.GetString(),
+                    pattern,
+                    count
+                ));
+
+                // HSCAN returns [cursor, [field1, value1, field2, value2, ...]]
+                auto scan_result = RedisProtocol::parseArrayResponse(response);
+                std::string result_str;
+                if (scan_result.size() >= 2) {
+                    result_str = scan_result[0] + ":";
+                    auto kvs = RedisProtocol::parseArrayResponse(scan_result[1]);
+                    for (size_t i = 0; i < kvs.size(); i += 2) {
+                        if (i > 0) result_str += ",";
+                        result_str += kvs[i] + "=" + ((i + 1) < kvs.size() ? kvs[i + 1] : "");
+                    }
+                } else {
+                    result_str = "0:";
+                }
+                return StringVector::AddString(result, result_str);
+            } catch (std::exception &e) {
+                throw InvalidInputException("Redis HSCAN error: %s", e.what());
+            }
+        });
+}
+
 static void LoadInternal(DatabaseInstance &instance) {
     // Register the secret functions first!
     CreateRedisSecretFunctions::Register(instance);
@@ -581,6 +640,21 @@ static void LoadInternal(DatabaseInstance &instance) {
         RedisScanFunction
     );
     ExtensionUtil::RegisterFunction(instance, redis_scan_func);
+
+    // Register HSCAN
+    auto redis_hscan_func = ScalarFunction(
+        "redis_hscan",
+        {
+            LogicalType::VARCHAR, // key
+            LogicalType::VARCHAR, // cursor
+            LogicalType::VARCHAR, // pattern
+            LogicalType::BIGINT,  // count
+            LogicalType::VARCHAR  // secret_name
+        },
+        LogicalType::VARCHAR,
+        RedisHScanFunction
+    );
+    ExtensionUtil::RegisterFunction(instance, redis_hscan_func);    
 }
 
 void RedisExtension::Load(DuckDB &db) {
