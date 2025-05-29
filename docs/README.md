@@ -7,11 +7,32 @@ This extension provides Redis client functionality for DuckDB, allowing you to i
 
 ## Features
 Currently supported Redis operations:
-- String operations: `GET`, `SET`
-- Hash operations: `HGET`, `HSET`
-- List operations: `LPUSH`, `LRANGE`
-- Batch operations: `MGET`, `SCAN`
+- String operations: `GET`, `SET`, `MGET`
+- Hash operations: `HGET`, `HSET`, `HGETALL`, `HSCAN`, `HSCAN_OVER_SCAN`
+- List operations: `LPUSH`, `LRANGE`, `LRANGE_TABLE`
+- Key operations: `DEL`, `EXISTS`, `TYPE`, `SCAN`, `KEYS`
+- Batch and discovery operations: `SCAN`, `HSCAN_OVER_SCAN`, `KEYS`
 
+## Quick Reference: Available Functions
+
+| Function | Type | Description |
+|----------|------|-------------|
+| `redis_get(key, secret)` | Scalar | Get value of a string key |
+| `redis_set(key, value, secret)` | Scalar | Set value of a string key |
+| `redis_mget(keys_csv, secret)` | Scalar | Get values for multiple keys (comma-separated) |
+| `redis_hget(key, field, secret)` | Scalar | Get value of a hash field |
+| `redis_hset(key, field, value, secret)` | Scalar | Set value of a hash field |
+| `redis_lpush(key, value, secret)` | Scalar | Push value to a list |
+| `redis_lrange(key, start, stop, secret)` | Scalar | Get range from a list (comma-separated) |
+| `redis_del(key, secret)` | Scalar | Delete a key (returns TRUE if deleted) |
+| `redis_exists(key, secret)` | Scalar | Check if a key exists (returns TRUE if exists) |
+| `redis_type(key, secret)` | Scalar | Get the type of a key |
+| `redis_scan(cursor, pattern, count, secret)` | Scalar | Scan keys (returns cursor:keys_csv) |
+| `redis_hscan(key, cursor, pattern, count, secret)` | Scalar | Scan fields in a hash |
+| `redis_keys(pattern, secret)` | Table | List all keys matching a pattern |
+| `redis_hgetall(key, secret)` | Table | List all fields and values in a hash |
+| `redis_lrange_table(key, start, stop, secret)` | Table | List elements in a list as rows |
+| `redis_hscan_over_scan(scan_pattern, hscan_pattern, count, secret)` | Table | For all keys matching scan_pattern, HSCAN with hscan_pattern, return (key, field, value) rows |
 
 ## Installation
 ```sql
@@ -70,6 +91,15 @@ SELECT redis_hset('user:1', 'age', '30', 'redis');
 -- Get hash field
 SELECT redis_hget('user:1', 'email', 'redis') as email;
 
+-- Get all fields and values in a hash (table)
+SELECT * FROM redis_hgetall('user:1', 'redis');
+
+-- HSCAN a hash (pattern match fields)
+SELECT redis_hscan('user:1', '0', 'email*', 100, 'redis');
+
+-- HSCAN over SCAN: for all keys matching a pattern, get all hash fields matching a pattern
+SELECT * FROM redis_hscan_over_scan('user:*', 'email*', 100, 'redis');
+
 -- Store user profile as hash
 WITH profile(id, field, value) AS (
     VALUES 
@@ -93,11 +123,10 @@ SELECT redis_lpush('mylist', 'first_item', 'redis');
 SELECT redis_lpush('mylist', 'second_item', 'redis');
 
 -- Get range from list (returns comma-separated values)
--- Get all items (0 to -1 means start to end)
 SELECT redis_lrange('mylist', 0, -1, 'redis') as items;
 
--- Get first 5 items
-SELECT redis_lrange('mylist', 0, 4, 'redis') as items;
+-- Get all items in a list as rows (table)
+SELECT * FROM redis_lrange_table('mylist', 0, -1, 'redis');
 
 -- Push multiple items
 WITH items(value) AS (
@@ -107,24 +136,34 @@ SELECT redis_lpush('mylist', value, 'redis')
 FROM items;
 ```
 
-### Batch Operations
+### Key Operations
+```sql
+-- List all keys matching a pattern (table)
+SELECT * FROM redis_keys('user:*', 'redis');
+
+-- Delete a key
+SELECT redis_del('user:1', 'redis');
+
+-- Check if a key exists
+SELECT redis_exists('user:1', 'redis');
+
+-- Get the type of a key
+SELECT redis_type('user:1', 'redis');
+```
+
+### Batch and Discovery Operations
 ```sql
 -- Get multiple keys at once
 SELECT redis_mget('key1,key2,key3', 'redis') as values;
--- Returns comma-separated values for all keys
 
 -- Scan keys matching a pattern
 SELECT redis_scan('0', 'user:*', 10, 'redis') as result;
--- Returns: "cursor:key1,key2,key3" where cursor is the next position for scanning
--- Use the returned cursor for the next scan until cursor is 0
 
--- Scan all keys matching a pattern
+-- Scan all keys matching a pattern (recursive)
 WITH RECURSIVE scan(cursor, keys) AS (
-    -- Initial scan
     SELECT split_part(redis_scan('0', 'user:*', 10, 'redis'), ':', 1),
            split_part(redis_scan('0', 'user:*', 10, 'redis'), ':', 2)
     UNION ALL
-    -- Continue scanning until cursor is 0
     SELECT split_part(redis_scan(cursor, 'user:*', 10, 'redis'), ':', 1),
            split_part(redis_scan(cursor, 'user:*', 10, 'redis'), ':', 2)
     FROM scan
