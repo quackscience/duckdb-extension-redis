@@ -568,7 +568,7 @@ struct RedisHScanOverScanBindData : public duckdb::TableFunctionData {
     bool scan_complete = false;
 };
 
-static duckdb::unique_ptr<duckdb::FunctionData> RedisHScanOverScanBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, std::vector<duckdb::LogicalType> &return_types, std::vector<std::string> &names) {
+static duckdb::unique_ptr<duckdb::FunctionData> RedisHScanOverScanBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, duckdb::vector<duckdb::LogicalType> &return_types, duckdb::vector<std::string> &names) {
     auto result = duckdb::make_uniq<RedisHScanOverScanBindData>();
     result->scan_pattern = input.inputs[0].ToString();
     result->hscan_pattern = input.inputs[1].ToString();
@@ -587,7 +587,6 @@ static duckdb::unique_ptr<duckdb::FunctionData> RedisHScanOverScanBind(duckdb::C
 
 static void RedisHScanOverScanFunction(duckdb::ClientContext &context, duckdb::TableFunctionInput &data_p, duckdb::DataChunk &output) {
     auto &data = (RedisHScanOverScanBindData &)*data_p.bind_data;
-    auto &allocator = output.GetAllocator();
     idx_t out_row = 0;
     const idx_t max_rows = output.size();
     while (out_row < max_rows) {
@@ -660,7 +659,7 @@ struct RedisKeysBindData : public duckdb::TableFunctionData {
     bool scan_complete = false;
 };
 
-static duckdb::unique_ptr<duckdb::FunctionData> RedisKeysBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, std::vector<duckdb::LogicalType> &return_types, std::vector<std::string> &names) {
+static duckdb::unique_ptr<duckdb::FunctionData> RedisKeysBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, duckdb::vector<duckdb::LogicalType> &return_types, duckdb::vector<std::string> &names) {
     auto result = duckdb::make_uniq<RedisKeysBindData>();
     result->pattern = input.inputs[0].ToString();
     result->secret_name = input.inputs[1].ToString();
@@ -717,7 +716,7 @@ struct RedisHGetAllBindData : public duckdb::TableFunctionData {
     bool fetched = false;
 };
 
-static duckdb::unique_ptr<duckdb::FunctionData> RedisHGetAllBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, std::vector<duckdb::LogicalType> &return_types, std::vector<std::string> &names) {
+static duckdb::unique_ptr<duckdb::FunctionData> RedisHGetAllBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, duckdb::vector<duckdb::LogicalType> &return_types, duckdb::vector<std::string> &names) {
     auto result = duckdb::make_uniq<RedisHGetAllBindData>();
     result->key = input.inputs[0].ToString();
     result->secret_name = input.inputs[1].ToString();
@@ -762,7 +761,7 @@ struct RedisLRangeTableBindData : public duckdb::TableFunctionData {
     bool fetched = false;
 };
 
-static duckdb::unique_ptr<duckdb::FunctionData> RedisLRangeTableBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, std::vector<duckdb::LogicalType> &return_types, std::vector<std::string> &names) {
+static duckdb::unique_ptr<duckdb::FunctionData> RedisLRangeTableBind(duckdb::ClientContext &context, duckdb::TableFunctionBindInput &input, duckdb::vector<duckdb::LogicalType> &return_types, duckdb::vector<std::string> &names) {
     auto result = duckdb::make_uniq<RedisLRangeTableBindData>();
     result->key = input.inputs[0].ToString();
     result->start = input.inputs[1].GetValue<int64_t>();
