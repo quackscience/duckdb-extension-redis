@@ -3,6 +3,12 @@
 # DuckDB Redis Client Extension
 This extension provides Redis client functionality for DuckDB, allowing you to interact with a Redis server directly from SQL queries.
 
+## Usage
+```sql
+INSTALL redis FROM community;
+LOAD redis;
+```
+
 > Experimental: USE AT YOUR OWN RISK!
 
 ## Features
